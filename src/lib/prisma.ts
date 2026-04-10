@@ -15,13 +15,11 @@ const createPrismaClient = () => {
     return new PrismaClient({ adapter });
   }
 
-  // For 'prisma+postgres://' or other scenarios on Vercel/Local:
-  // In Prisma 7, we MUST pass the URL explicitly via datasourceUrl.
-  // We use a cast to bypass the TypeScript 'Unknown property' error that can occur 
-  // if the client hasn't been generated with the latest schema yet.
-  return new PrismaClient({
-    datasourceUrl: url,
-  } as any);
+  // For 'prisma+postgres://' or high-latency scenarios on Vercel/Local:
+  // In Prisma 7, connection details are strictly handled by prisma.config.ts.
+  // We simply call new PrismaClient() and it will automatically look up the 
+  // configuration defined in the root prisma.config.ts.
+  return new PrismaClient();
 };
 
 export const prisma = globalForPrisma.prisma || createPrismaClient();
