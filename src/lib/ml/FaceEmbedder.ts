@@ -2,21 +2,32 @@ import * as ort from "onnxruntime-web";
 
 export class FaceEmbedder {
   private session: ort.InferenceSession | null = null;
-  private readonly MODEL_URL = "/models/arcface.onnx";
+  
+  // Use a public URL for the model if provided in env, else fallback to local
+  private readonly MODEL_URL = process.env.NEXT_PUBLIC_MODEL_URL || "/models/arcface.onnx";
 
   async init() {
     if (this.session) return;
 
-    // Configure WASM paths for Next.js/Browser
-    ort.env.wasm.wasmPaths = "/wasm/";
+    // Configure WASM paths to use a CDN for production reliability 
+    // This resolves the 'failed to fetch' errors when /wasm/ folder is missing.
+    const isProd = typeof window !== "undefined" && window.location.hostname !== "localhost";
+    const wasmBase = isProd 
+      ? "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/" 
+      : "/wasm/";
+    
+    // Ensure trailing slash
+    ort.env.wasm.wasmPaths = wasmBase;
 
     try {
+      console.log(`Loading face recognition model from: ${this.MODEL_URL}`);
       this.session = await ort.InferenceSession.create(this.MODEL_URL, {
-        executionProviders: ["webgl", "wasm"], // Fallback to wasm if webgl fails
+        executionProviders: ["webgl", "wasm"],
       });
-      console.log("Face recognition model loaded");
+      console.log("Face recognition model loaded successfully");
     } catch (e) {
-      console.error("Failed to load ONNX model:", e);
+      console.error("Failed to load ONNX model. Check if the model file exists at:", this.MODEL_URL);
+      console.error("Error details:", e);
       throw e;
     }
   }
@@ -30,15 +41,12 @@ export class FaceEmbedder {
       throw new Error("Embedder not initialized");
     }
 
-    // 1. Preprocess: Get pixel data from canvas
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Could not get 2D context");
 
     const imageData = ctx.getImageData(0, 0, 112, 112);
     const { data } = imageData;
 
-    // 2. Prepare tensor (NHWC format: [1, 112, 112, 3])
-    // Most ONNX Model Zoo ArcFace models expect [1, 112, 112, 3]
     const float32Data = new Float32Array(1 * 112 * 112 * 3);
     for (let i = 0; i < 112 * 112; i++) {
         float32Data[i * 3 + 0] = (data[i * 4 + 0] - 127.5) / 128.0; // R
@@ -48,11 +56,9 @@ export class FaceEmbedder {
 
     const inputTensor = new ort.Tensor("float32", float32Data, [1, 112, 112, 3]);
 
-    // 3. Inference
     const outputMap = await this.session.run({ [this.session.inputNames[0]]: inputTensor });
     const output = outputMap[this.session.outputNames[0]].data as Float32Array;
 
-    // 4. L2 Normalization (ArcFace embeddings are usually normalized)
     return this.l2Normalize(output);
   }
 
