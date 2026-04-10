@@ -15,14 +15,10 @@ const createPrismaClient = () => {
     return new PrismaClient({ adapter });
   }
 
-  // For 'prisma+postgres://' or other scenarios, provide the URL explicitly using the correct datasources property
-  return new PrismaClient({
-    datasources: {
-      db: {
-        url: url
-      }
-    }
-  });
+  // For 'prisma+postgres://' or other scenarios on Vercel/Local, 
+  // simply calling new PrismaClient() will automatically use the DATABASE_URL environment variable.
+  // Now that 'prisma generate' runs during build, this will be correctly typed.
+  return new PrismaClient();
 };
 
 export const prisma = globalForPrisma.prisma || createPrismaClient();
