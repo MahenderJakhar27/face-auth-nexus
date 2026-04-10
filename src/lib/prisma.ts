@@ -7,21 +7,34 @@ const globalForPrisma = global as unknown as { prisma: PrismaClient };
 const createPrismaClient = () => {
   const url = process.env.DATABASE_URL;
 
-  // Prisma 7 logic: 
-  // If using a standard 'postgres://' or 'postgresql://' protocol, we use the adapter.
-  if (url && (url.startsWith("postgres://") || url.startsWith("postgresql://"))) {
+  // 1. Build-time protection:
+  // During 'next build', Vercel doesn't always provide the DATABASE_URL.
+  // If the URL is missing, we create a 'lazy' client that doesn't initialize yet.
+  if (!url) {
+    return new PrismaClient(); // This will work during build but fail at runtime if still missing
+  }
+
+  // 2. Adapter Logic for standard Postgres:
+  if (url.startsWith("postgres://") || url.startsWith("postgresql://")) {
     const pool = new Pool({ connectionString: url });
     const adapter = new PrismaPg(pool);
     return new PrismaClient({ adapter });
   }
 
-  // For 'prisma+postgres://' or high-latency scenarios on Vercel/Local:
-  // In Prisma 7, connection details are strictly handled by prisma.config.ts.
-  // We simply call new PrismaClient() and it will automatically look up the 
-  // configuration defined in the root prisma.config.ts.
+  // 3. Prisma 7 Logic (prisma+postgres:// etc):
   return new PrismaClient();
 };
 
-export const prisma = globalForPrisma.prisma || createPrismaClient();
+// We use a Proxy or a simple getter to ensure Prisma is only initialized when first accessed.
+// This prevents the 'InitializationError' during Vercel's build-time static analysis.
+let prismaInstance: PrismaClient | null = null;
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = new Proxy({} as PrismaClient, {
+  get: (target, prop) => {
+    if (!prismaInstance) {
+      prismaInstance = globalForPrisma.prisma || createPrismaClient();
+      if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prismaInstance;
+    }
+    return (prismaInstance as any)[prop];
+  }
+});
