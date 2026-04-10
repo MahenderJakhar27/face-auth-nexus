@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# ML Models and Runtimes (Too large for standard GitHub)
+/public/models
+/public/wasm
